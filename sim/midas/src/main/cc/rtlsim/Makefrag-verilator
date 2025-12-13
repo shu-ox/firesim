@@ -32,7 +32,6 @@ override VERILATOR_FLAGS := \
 	--vpi \
 	--output-split 10000 \
 	--output-split-cfuncs 100 \
-	-Wall \
 	-Wno-UNUSEDSIGNAL \
 	-Wno-DECLFILENAME \
 	-Wno-VARHIDDEN \
@@ -40,7 +39,7 @@ override VERILATOR_FLAGS := \
 	-CFLAGS "$(CXXFLAGS) -DVERILATOR" \
 	$(if $(LDFLAGS),-LDFLAGS "$(LDFLAGS)",) \
 	$(SIM_PREPROC_DEFINES) \
-	$(VERILATOR_FLAGS)
+	$(VERILATOR_FLAGS) ${PRJ_SETTINGS} -Wno-fatal
 
 model_dir = $(GEN_DIR)/V$(DRIVER_NAME).csrc
 model_dir_debug = $(GEN_DIR)/V$(DRIVER_NAME)-debug.csrc

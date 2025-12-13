@@ -48,7 +48,7 @@ $(OUT_DIR)/$(DRIVER_NAME): $(vcs_v) $(vcs_cc) $(emul_h)
 	mkdir -p $(OUT_DIR)
 	rm -rf $(GEN_DIR)/$(DRIVER_NAME).csrc
 	rm -rf $(OUT_DIR)/$(DRIVER_NAME).daidir
-	$(VCS) $(vcs_rtl_flags) -o $@ $(vcs_v) $(vcs_cc)
+	$(VCS) $(vcs_rtl_flags) -o $@ $(vcs_v) ${PRJ_SETTINGS} $(vcs_cc)
 
 $(OUT_DIR)/$(DRIVER_NAME)-debug: $(vcs_v) $(vcs_cc) $(emul_h)
 	mkdir -p $(OUT_DIR)
