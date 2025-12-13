@@ -112,7 +112,7 @@ void simif_emul_t::wait_read(mmio_t &mmio, void *data) {
 void simif_emul_t::write(size_t addr, uint32_t data) {
   uint64_t size = master->get_config().get_size();
   assert(size == 2 && "AXI4-lite control interface has unexpected size");
-  uint64_t strb = (1 << master->get_config().strb_bits()) - 1;
+  unsigned long strb = (1 << master->get_config().strb_bits()) - 1;
   master->write_req(addr, size, 0, &data, &strb);
   wait_write(*master);
 }
