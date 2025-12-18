@@ -38,6 +38,7 @@ public:
 
   virtual ~simif_t();
 
+  bool *_run;
 public:
   /**
    * @brief 32b MMIO write, issued over the simulation control bus (AXI4-lite).

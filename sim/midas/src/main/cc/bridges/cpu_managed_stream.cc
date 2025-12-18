@@ -30,13 +30,13 @@ size_t CPUManagedStreams::CPUToFPGADriver::push(void *src,
   auto threshold_beats = required_bytes / fpga_buffer_width_bytes();
 
   assert(threshold_beats <= fpga_buffer_size());
-  auto space_available = fpga_buffer_size() - mmio_read(count_addr());
+  size_t space_available = fpga_buffer_size() - mmio_read(count_addr());
 
   if ((space_available == 0) || (space_available < threshold_beats)) {
     return 0;
   }
 
-  auto push_beats = std::min(space_available, num_beats);
+  auto push_beats = std::min((int)space_available, (int)num_beats);
   auto push_bytes = push_beats * fpga_buffer_width_bytes();
   auto bytes_written =
       cpu_managed_axi4_write(dma_addr(), (char *)src, push_bytes);
@@ -82,7 +82,7 @@ size_t CPUManagedStreams::FPGAToCPUDriver::pull(void *dest,
     return 0;
   }
 
-  auto pull_beats = std::min(count, num_beats);
+  auto pull_beats = std::min((int)count, (int)num_beats);
   auto pull_bytes = pull_beats * fpga_buffer_width_bytes();
   auto bytes_read = cpu_managed_axi4_read(dma_addr(), (char *)dest, pull_bytes);
   assert(bytes_read == pull_bytes);
