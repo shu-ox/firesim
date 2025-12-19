@@ -232,7 +232,7 @@ class FASEDMemoryTimingModel(completeConfig: CompleteConfig, hostParams: Paramet
     // Since there is no diplomatic AXI4 width converter, use the TL one
     val xbar = LazyModule(new TLXbar)
     val error = LazyModule(new TLError(DevNullParams(
-        Seq(AddressSet(BigInt(1) << p(NastiKey).addrBits, 0xff)),
+        Seq(AddressSet(BigInt(1) << p(NastiKey).addrBits, p(HostMemChannelKey).maxXferBytes-1)),
         maxAtomic = 1,
         maxTransfer = p(HostMemChannelKey).maxXferBytes),
       beatBytes = hostWidthBytes))

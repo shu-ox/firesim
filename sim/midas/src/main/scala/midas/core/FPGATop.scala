@@ -228,7 +228,7 @@ class FPGATop(implicit p: Parameters) extends LazyModule with HasWidgets {
               :=* AXI4Buffer()
               :=* AXI4AddressTranslation(offset, addresses, regionName))
             bridgeSeq.foreach { bridge =>
-              (preTranslationPort := AXI4Deinterleaver(bridge.memorySlaveConstraints.supportsRead.max)
+              (preTranslationPort //:= AXI4Deinterleaver(bridge.memorySlaveConstraints.supportsRead.max)
                 := bridge.memoryMasterNode)
             }
             regionName -> offset
