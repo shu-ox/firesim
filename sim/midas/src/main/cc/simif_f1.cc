@@ -237,6 +237,10 @@ pcie_uio:
       *reg_ptr = 1;
       usleep(100);
     }
+    /* map axi 0-16G to host 0x4_0000_0000 */
+    reg_ptr = (uint32_t *)(bar0_base + 0x208); *reg_ptr = 0x00000004; // AXIBAR2PCIEBAR0_U
+    reg_ptr = (uint32_t *)(bar0_base + 0x20C); *reg_ptr = 0x00000000; // AXIBAR2PCIEBAR0_L
+    printf("map: %x, %x\n", *(uint32_t *)(bar0_base + 0x208), *(uint32_t *)(bar0_base + 0x20C));
     return;
   }
 }
