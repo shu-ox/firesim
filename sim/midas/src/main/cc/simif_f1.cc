@@ -84,6 +84,8 @@ void simif_f1_t::check_rc(int rc, char *infostr) {
 }
 
 void simif_f1_t::fpga_shutdown() {
+  if (bar0_base)
+    return;
   int rc = fpga_pci_detach(pci_bar_handle);
   // don't call check_rc because of fpga_shutdown call. do it manually:
   if (rc) {
@@ -231,13 +233,19 @@ pcie_uio:
     volatile uint32_t *reg_ptr = (uint32_t *)(bar0_base + 1*1024*1024);
     uint32_t value = *reg_ptr;
     printf("Reset firesim, value=%x\n", value);
+    assert(value != 0xFFFFFFFF);
     if (value == 1) {
       *reg_ptr = 0;
       usleep(100);
       *reg_ptr = 1;
       usleep(100);
+      printf("wait\n");
+      getchar();
     }
-    /* map axi 0-16G to host 0x4_0000_0000 */
+    /* map axi 0-16G to host 0x4_0000_0000
+     * reserved 16G mem in host
+     *  GRUB_CMDLINE_LINUX_DEFAULT="text pci=noaer memmap=16G$0x400000000 intel_iommu=off"
+     */
     reg_ptr = (uint32_t *)(bar0_base + 0x208); *reg_ptr = 0x00000004; // AXIBAR2PCIEBAR0_U
     reg_ptr = (uint32_t *)(bar0_base + 0x20C); *reg_ptr = 0x00000000; // AXIBAR2PCIEBAR0_L
     printf("map: %x, %x\n", *(uint32_t *)(bar0_base + 0x208), *(uint32_t *)(bar0_base + 0x20C));
@@ -280,6 +288,11 @@ simif_f1_t::cpu_managed_axi4_write(size_t addr, const char *data, size_t size) {
 }
 
 uint32_t simif_f1_t::is_write_ready() {
+  if (bar0_base) {
+    volatile uint32_t *reg_ptr = (uint32_t *)(bar0_base + 0x4);
+    uint32_t value = *reg_ptr;
+    return value & 0xFFFFFFFF;
+  }
   uint64_t addr = 0x4;
   uint32_t value;
   int rc = fpga_pci_peek(pci_bar_handle, addr, &value);
