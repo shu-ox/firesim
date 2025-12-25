@@ -239,8 +239,6 @@ pcie_uio:
       usleep(100);
       *reg_ptr = 1;
       usleep(100);
-      printf("wait\n");
-      getchar();
     }
     /* map axi 0-16G to host 0x4_0000_0000
      * reserved 16G mem in host
