@@ -244,9 +244,12 @@ pcie_uio:
      * reserved 16G mem in host
      *  GRUB_CMDLINE_LINUX_DEFAULT="text pci=noaer memmap=16G$0x400000000 intel_iommu=off"
      */
-    reg_ptr = (uint32_t *)(bar0_base + 0x208); *reg_ptr = 0x00000004; // AXIBAR2PCIEBAR0_U
-    reg_ptr = (uint32_t *)(bar0_base + 0x20C); *reg_ptr = 0x00000000; // AXIBAR2PCIEBAR0_L
-    printf("map: %x, %x\n", *(uint32_t *)(bar0_base + 0x208), *(uint32_t *)(bar0_base + 0x20C));
+    uint32_t xdma_ofst = 3 * 1024 * 1024;
+    reg_ptr = (uint32_t *)(bar0_base + xdma_ofst + 0x208); *reg_ptr = 0x00000004; // AXIBAR2PCIEBAR0_U
+    reg_ptr = (uint32_t *)(bar0_base + xdma_ofst + 0x20C); *reg_ptr = 0x00000000; // AXIBAR2PCIEBAR0_L
+    printf("map: DRAM addr 0 -> host %08x,%08x\n",
+        *(uint32_t *)(bar0_base + xdma_ofst + 0x208),
+        *(uint32_t *)(bar0_base + xdma_ofst + 0x20C));
     return;
   }
 }
