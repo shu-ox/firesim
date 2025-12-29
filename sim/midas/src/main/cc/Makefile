@@ -21,7 +21,12 @@ PLATFORM ?= f1
 OUT_DIR ?= $(GEN_DIR)
 
 override CXXFLAGS += -Wall -I$(midas_dir) -I$(GEN_DIR)
+ifdef ($(shell uname -s),Linux)
 override LDFLAGS += -L$(GEN_DIR) -lstdc++ -lpthread -lgmp -lrt
+endif
+ifdef ($(shell uname -s),Darwin)
+override LDFLAGS += -L$(GEN_DIR) -lstdc++ -lpthread -L/opt/homebrew/lib/ -lgmp
+endif
 
 DESIGN_V  ?= $(GEN_DIR)/$(GEN_FILE_BASENAME).sv
 design_h  := $(GEN_DIR)/$(GEN_FILE_BASENAME).const.h
