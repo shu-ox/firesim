@@ -13,7 +13,7 @@
 VCS ?= vcs -full64
 
 ifeq (${shell uname -s},Linux)
-	LDFLAGS += -lrt
+	LDFLAGS += -lgmp -lrt
 endif
 
 vcs_flags := \
