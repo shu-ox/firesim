@@ -11,6 +11,11 @@
 # aforementioned sources. This should removed once we remove the global
 # -include of the generated header.
 VCS ?= vcs -full64
+
+ifeq (${shell uname -s},Linux)
+	LDFLAGS += -lrt
+endif
+
 vcs_flags := \
 	$(VCS_FLAGS) \
 	-quiet -timescale=$(SIM_TIMESCALE) +v2k +rad +vcs+initreg+random +vcs+lic+wait \
