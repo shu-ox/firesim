@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include "bridges/cpu_managed_stream.h"
 #include "bridges/fpga_managed_stream.h"
@@ -44,6 +46,8 @@ private:
   int edma_write_fd;
   int edma_read_fd;
   pci_bar_handle_t pci_bar_handle;
+  void *bar0_base;
+  uint32_t bar0_size = 4*1024*1024; /* 4M */
 };
 
 simif_f1_t::simif_f1_t(const TargetConfig &config,
@@ -86,13 +90,17 @@ void simif_f1_t::check_rc(int rc, char *infostr) {
 }
 
 void simif_f1_t::fpga_shutdown() {
+  if (bar0_base)
+    return;
   int rc = fpga_pci_detach(pci_bar_handle);
   // don't call check_rc because of fpga_shutdown call. do it manually:
   if (rc) {
     fprintf(stderr, "Failure while detaching from the fpga: %d\n", rc);
   }
+#if 0
   close(edma_write_fd);
   close(edma_read_fd);
+#endif
 }
 
 /**
@@ -103,7 +111,7 @@ constexpr uint16_t pci_vendor_id = 0x1D0F;
 /**
  * Amazon PCI Device ID pre-assigned by for F1 applications.
  */
-constexpr uint16_t pci_device_id = 0xF000;
+constexpr uint16_t pci_device_id = 0xF010;
 
 void simif_f1_t::fpga_setup(int slot_id, const std::string &agfi) {
   int rc = fpga_mgmt_init();
@@ -140,6 +148,9 @@ void simif_f1_t::fpga_setup(int slot_id, const std::string &agfi) {
 
   /* get local image description, contains status, vendor id, and device id. */
   rc = fpga_mgmt_describe_local_image(slot_id, &info, 0);
+  if (rc) {
+    goto pcie_uio;
+  }
   check_rc(rc,
            "Unable to get AFI information from slot. Are you running as root?");
 
@@ -199,6 +210,7 @@ void simif_f1_t::fpga_setup(int slot_id, const std::string &agfi) {
   rc = fpga_pci_attach(slot_id, FPGA_APP_PF, APP_PF_BAR0, 0, &pci_bar_handle);
   check_rc(rc, "fpga_pci_attach FAILED");
 
+#if 0
   // EDMA setup
   char device_file_name[256];
   char device_file_name2[256];
@@ -208,35 +220,86 @@ void simif_f1_t::fpga_setup(int slot_id, const std::string &agfi) {
   sprintf(device_file_name2, "/dev/xdma%d_c2h_0", slot_id);
   printf("Using xdma read queue: %s\n", device_file_name2);
 
+
   edma_write_fd = open(device_file_name, O_WRONLY);
   edma_read_fd = open(device_file_name2, O_RDONLY);
   assert(edma_write_fd >= 0);
   assert(edma_read_fd >= 0);
+#endif
+  if (0) {
+pcie_uio:
+    int fd = open("/dev/uio0", O_RDWR | O_SYNC);
+    assert(fd != -1);
+
+    bar0_base = mmap(0, bar0_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    assert(bar0_base != MAP_FAILED);
+
+    close(fd);
+
+    volatile uint32_t *reg_ptr = (uint32_t *)(bar0_base + 1*1024*1024);
+    uint32_t value = *reg_ptr;
+    printf("Reset firesim, value=%x\n", value);
+    assert(value != 0xFFFFFFFF);
+    if (value == 1) {
+      *reg_ptr = 0;
+      usleep(100);
+      *reg_ptr = 1;
+      usleep(100);
+    }
+    /* map axi 0-16G to host 0x4_0000_0000
+     * reserved 16G mem in host
+     *  GRUB_CMDLINE_LINUX_DEFAULT="text pci=noaer memmap=16G$0x400000000 intel_iommu=off"
+     */
+    uint32_t xdma_ofst = 3 * 1024 * 1024;
+    reg_ptr = (uint32_t *)(bar0_base + xdma_ofst + 0x208); *reg_ptr = 0x00000004; // AXIBAR2PCIEBAR0_U
+    reg_ptr = (uint32_t *)(bar0_base + xdma_ofst + 0x20C); *reg_ptr = 0x00000000; // AXIBAR2PCIEBAR0_L
+    printf("map: DRAM addr 0 -> host %08x,%08x\n",
+        *(uint32_t *)(bar0_base + xdma_ofst + 0x208),
+        *(uint32_t *)(bar0_base + xdma_ofst + 0x20C));
+    return;
+  }
 }
 
 simif_f1_t::~simif_f1_t() { fpga_shutdown(); }
 
 void simif_f1_t::write(size_t addr, uint32_t data) {
+  if (bar0_base) {
+    volatile uint32_t *reg_ptr = (uint32_t *)(bar0_base + addr);
+    *reg_ptr = data;
+    return;
+  }
   int rc = fpga_pci_poke(pci_bar_handle, addr, data);
   check_rc(rc, NULL);
+  //printf("w: %x, %x\n", addr, data);
 }
 
 uint32_t simif_f1_t::read(size_t addr) {
   uint32_t value;
+  if (bar0_base) {
+    volatile uint32_t *reg_ptr = (uint32_t *)(bar0_base + addr);
+    value = *reg_ptr;
+    return value & 0xFFFFFFFF;
+  }
   int rc = fpga_pci_peek(pci_bar_handle, addr, &value);
+  //printf("r: %x, %x\n", addr, value);
   return value & 0xFFFFFFFF;
 }
 
 size_t simif_f1_t::cpu_managed_axi4_read(size_t addr, char *data, size_t size) {
-  return ::pread(edma_read_fd, data, size, addr);
+  return /*::pread(edma_read_fd, data, size, addr)*/0;
 }
 
 size_t
 simif_f1_t::cpu_managed_axi4_write(size_t addr, const char *data, size_t size) {
-  return ::pwrite(edma_write_fd, data, size, addr);
+  return /*::pwrite(edma_write_fd, data, size, addr)*/0;
 }
 
 uint32_t simif_f1_t::is_write_ready() {
+  if (bar0_base) {
+    volatile uint32_t *reg_ptr = (uint32_t *)(bar0_base + 0x4);
+    uint32_t value = *reg_ptr;
+    return value & 0xFFFFFFFF;
+  }
   uint64_t addr = 0x4;
   uint32_t value;
   int rc = fpga_pci_peek(pci_bar_handle, addr, &value);

@@ -119,9 +119,9 @@ class F1Config extends Config(new Config((site, here, up) => {
     size      = 0x400000000L, // 16 GiB
     beatBytes = 8,
     idBits    = 16)
-  case HostMemNumChannels => 4
+  case HostMemNumChannels => 1
   case PreLinkCircuitPath => Some("firesim_top")
-  case PostLinkCircuitPath => Some("WRAPPER_INST/CL/firesim_top")
+  case PostLinkCircuitPath => Some("WRAPPER/CL/firesim_top")
 }) ++ new SimConfig)
 
 class XilinxAlveoU250Config extends Config(new Config((site, here, up) => {
