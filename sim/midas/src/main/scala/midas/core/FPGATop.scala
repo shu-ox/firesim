@@ -398,7 +398,7 @@ class FPGATop(implicit p: Parameters) extends LazyModule with HasWidgets {
 
         fpgaStreamingEngine.fpgaManagedAXI4NodeOpt match {
           case Some(engineNode) =>
-            node := AXI4IdIndexer(params.idBits) := AXI4Buffer() := engineNode
+            node := AXI4UserYanker() := AXI4IdIndexer(params.idBits) := AXI4Buffer() := engineNode
           case None             =>
             node := AXI4TieOff()
         }
