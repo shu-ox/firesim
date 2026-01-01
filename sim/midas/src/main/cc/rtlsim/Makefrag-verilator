@@ -30,6 +30,7 @@ ifeq (${UNAME_S},Darwin)
 	EXT_LDFLAGS=$(LDFLAGS) -L/opt/homebrew/lib -lgmp
 endif
 ifeq (${UNAME_S},Linux)
+	LDFLAGS+=-lgmp
 endif
 
 override VERILATOR_FLAGS := \
