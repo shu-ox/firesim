@@ -150,12 +150,12 @@ FPGAManagedStreamWidget::FPGAManagedStreamWidget(
 #ifndef RTLSIM
     uint64_t offset = pcis_offsets[idx];
 #else
-    char *fpga_address_memory_base = io.get_memory_base();
-    uint64_t offset = capacity * idx + (uint64_t)fpga_address_memory_base;
+    char *base = io.get_memory_base();
+    uint64_t offset = capacity * idx;
 #endif
     fpga_to_cpu_streams.push_back(
         std::make_unique<FPGAManagedStreams::FPGAToCPUDriver>(
-            std::move(params), (void *)(offset), offset, io));
+            std::move(params), (void *)(base), offset, io));
     idx++;
   }
 }
