@@ -27,6 +27,7 @@ class FPGAManagedStreamEngine(p: Parameters, val params: StreamEngineParameters)
   // AXI4 transaction for each beat.
   // Sending 4KB wastes PCIe BW especially for when P2P is used for partitioning.
   val streamEngineForP2P = p(F1ShimHasPCIMPorts)
+  val streamEngineCreditEn = true
   val pageBytes          = if (streamEngineForP2P) beatBytes else 4096
   val pageBeats          = pageBytes / beatBytes
 
@@ -138,7 +139,7 @@ class FPGAManagedStreamEngine(p: Parameters, val params: StreamEngineParameters)
         !doneInit || (!(RegNext(bytesConsumedByCPU) =/= 0.U) || (bytesConsumedByCPU === 0.U)),
         "Back-to-back MMIO accesses, or incorrect toggling on bytesConsumedByCPU",
       )
-      if (!streamEngineForP2P) {
+      if (streamEngineCreditEn) {
         when(bytesConsumedByCPU =/= 0.U) {
           bytesConsumedByCPU := 0.U
           writeCredits       := writeCredits + bytesConsumedByCPU
@@ -174,7 +175,7 @@ class FPGAManagedStreamEngine(p: Parameters, val params: StreamEngineParameters)
             state             := sendData
             beatsToSendMinus1 := writeableBeatsMinus1
             writePtr          := writePtr + (writeableBeats * beatBytes.U)
-            if (!streamEngineForP2P) {
+            if (streamEngineCreditEn) {
               writeCredits := writeCredits + bytesConsumedByCPU - (writeableBeats * beatBytes.U)
             }
             flushBeatsToIssue := Mux(flushBeatsToIssue < writeableBeats, 0.U, flushBeatsToIssue - writeableBeats)
@@ -221,7 +222,7 @@ class FPGAManagedStreamEngine(p: Parameters, val params: StreamEngineParameters)
       val ackBeats = inflightBeatCounts.io.deq.bits.numBeats
       val ackFlush = inflightBeatCounts.io.deq.bits.isFlush
       when(axi4.b.fire) {
-        if (!streamEngineForP2P) {
+        if (streamEngineCreditEn) {
           readCredits := readCredits + (ackBeats * beatBytes.U) - bytesConsumedByCPU
         }
         when(ackFlush) {

@@ -73,6 +73,7 @@ FPGAManagedStreamWidget::FPGAManagedStreamWidget(
   auto &io = simif.get_fpga_managed_stream_io();
 
   int idx = 0;
+#ifndef RTLSIM
   bool found = false;
   const char *resource_name[8] = {};
 
@@ -141,11 +142,17 @@ FPGAManagedStreamWidget::FPGAManagedStreamWidget(
     }
     idx++;
   } while (found);
+#endif
 
   idx = 0;
   for (auto &&params : to_cpu) {
     uint32_t capacity = params.buffer_capacity;
+#ifndef RTLSIM
     uint64_t offset = pcis_offsets[idx];
+#else
+    char *fpga_address_memory_base = io.get_memory_base();
+    uint64_t offset = capacity * idx + (uint64_t)fpga_address_memory_base;
+#endif
     fpga_to_cpu_streams.push_back(
         std::make_unique<FPGAManagedStreams::FPGAToCPUDriver>(
             std::move(params), (void *)(offset), offset, io));
