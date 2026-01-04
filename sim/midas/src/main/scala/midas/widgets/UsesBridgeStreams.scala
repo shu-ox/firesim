@@ -41,7 +41,7 @@ import midas.core.{
   */
 object BridgeStreamConstants {
   /** The width, in bits, of the decoupled UInt payload presented to the bridge. */
-  val streamWidthBits = 512
+  val streamWidthBits = 512/8
 
   /** Sugar for generating a chisel type of a stream */
   def streamChiselType = DecoupledIO(UInt(streamWidthBits.W))
