@@ -73,7 +73,6 @@ FPGAManagedStreamWidget::FPGAManagedStreamWidget(
   auto &io = simif.get_fpga_managed_stream_io();
 
   int idx = 0;
-#ifndef RTLSIM
   bool found = false;
   const char *resource_name[8] = {};
 
@@ -142,27 +141,21 @@ FPGAManagedStreamWidget::FPGAManagedStreamWidget(
     }
     idx++;
   } while (found);
-#endif
 
   idx = 0;
   for (auto &&params : to_cpu) {
     uint32_t capacity = params.buffer_capacity;
-#ifndef RTLSIM
     uint64_t offset = pcis_offsets[idx];
-#else
-    char *base = io.get_memory_base();
-    uint64_t offset = capacity * idx;
-#endif
     fpga_to_cpu_streams.push_back(
         std::make_unique<FPGAManagedStreams::FPGAToCPUDriver>(
-            std::move(params), (void *)(base), offset, io));
+            std::move(params), (void *)(offset), offset, io));
     idx++;
   }
 }
 
 uint64_t FPGAManagedStreamWidget::get_p2p_bar_address(const char *dir_name) {
   int ret;
-  uint64_t physical_addr = 0;
+  uint64_t physical_addr;
   if (!dir_name) {
     printf("dir_name is null\n");
     assert(false);
@@ -203,10 +196,7 @@ uint64_t FPGAManagedStreamWidget::get_p2p_bar_address(const char *dir_name) {
       physical_addr = addr_begin;
     }
   }
-  fclose(fp);
-
   printf("get_p2p_bar_address physical_addr: 0x%" PRIx64 "\n", physical_addr);
-  assert(physical_addr != 0 && "Unable to get valid physical_addr");
-
+  fclose(fp);
   return physical_addr;
 }
