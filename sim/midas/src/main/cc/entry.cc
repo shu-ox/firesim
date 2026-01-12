@@ -30,9 +30,16 @@ create_simulation(simif_t &simif,
 extern std::unique_ptr<simif_t>
 create_simif(const TargetConfig &config, int argc, char **argv);
 
-std::unique_ptr<simif_t> simulator; // must exist for dpi.cc calls in emulation,
-                                    // must be global to avoid deletion
-std::unique_ptr<simulation_t> simulation; // must be global to avoid deletion
+std::unique_ptr<simif_t> simulator; // must be global to outlive entry() return
+std::unique_ptr<simulation_t> simulation; // must be global to outlive entry() return
+std::unique_ptr<widget_registry_t> widget_registry; // owns all widget drivers
+
+void entry_cleanup() {
+  // Keep simif alive until all widgets are destroyed.
+  simulation.reset();
+  widget_registry.reset();
+  simulator.reset();
+}
 
 // Entry point of the driver.
 int entry(int argc, char **argv) {
@@ -46,9 +53,9 @@ int entry(int argc, char **argv) {
 
   /* clang-format off */
   // NOLINTBEGIN
-  widget_registry_t *widget_registry_ptr = new widget_registry_t(); // must be never deallocated to avoid deletion
+  widget_registry = std::make_unique<widget_registry_t>();
   // must have this for *.const.h
-  widget_registry_t &registry = *widget_registry_ptr;
+  widget_registry_t &registry = *widget_registry;
   {
     // Here we instantiate our driver once for each bridge in the target. The
     // generated header contains a list of constructor calls. The different
@@ -70,7 +77,7 @@ int entry(int argc, char **argv) {
   /* clang-format on */
 
   // Create the simulation instance.
-  simulation = create_simulation(simif, *widget_registry_ptr, args);
+  simulation = create_simulation(simif, registry, args);
 
   // Run the simulation with the given implementation.
   return simif.run(*simulation);

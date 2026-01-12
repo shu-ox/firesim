@@ -354,8 +354,7 @@ void simulator_tick(
 
     if (*fin) {
       int exit_code = simulator->end();
-      delete simulator;
-      simulator = nullptr;
+      entry_cleanup();
       if (exit_code)
         exit(exit_code);
     }
