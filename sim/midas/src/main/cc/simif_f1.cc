@@ -90,8 +90,10 @@ void simif_f1_t::check_rc(int rc, char *infostr) {
 }
 
 void simif_f1_t::fpga_shutdown() {
-  if (bar0_base)
+  if (bar0_base) {
+    munmap(bar0_base, bar0_size);
     return;
+  }
   int rc = fpga_pci_detach(pci_bar_handle);
   // don't call check_rc because of fpga_shutdown call. do it manually:
   if (rc) {
