@@ -240,7 +240,7 @@ pcie_uio:
 
     volatile uint32_t *reg_ptr = (uint32_t *)(bar0_base + 1*1024*1024);
     uint32_t value = *reg_ptr;
-    printf("Reset firesim, value=%x\n", value);
+    fprintf(stderr, "Reset firesim, value=%x\n", value);
     assert(value != 0xFFFFFFFF);
     if (value == 1) {
       *reg_ptr = 0;
@@ -255,7 +255,7 @@ pcie_uio:
     uint32_t xdma_ofst = 3 * 1024 * 1024;
     reg_ptr = (uint32_t *)(bar0_base + xdma_ofst + 0x208); *reg_ptr = 0x00000004; // AXIBAR2PCIEBAR0_U
     reg_ptr = (uint32_t *)(bar0_base + xdma_ofst + 0x20C); *reg_ptr = 0x00000000; // AXIBAR2PCIEBAR0_L
-    printf("map: DRAM addr 0 -> host %08x,%08x\n",
+    fprintf(stderr, "map: DRAM addr 0 -> host %08x,%08x\n",
         *(uint32_t *)(bar0_base + xdma_ofst + 0x208),
         *(uint32_t *)(bar0_base + xdma_ofst + 0x20C));
     return;
