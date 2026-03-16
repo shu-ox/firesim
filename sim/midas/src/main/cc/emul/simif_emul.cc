@@ -12,6 +12,10 @@
 #include <string.h>
 #include <unistd.h>
 
+namespace {
+struct simif_shutdown_exception_t {};
+} // namespace
+
 simif_emul_t::simif_emul_t(const TargetConfig &config,
                            const std::vector<std::string> &args)
     : simif_t(config), master(std::make_unique<mmio_t>(config.ctrl)) {
@@ -147,7 +151,12 @@ simif_emul_t::simif_emul_t(const TargetConfig &config,
   std::cout << "simif_emul_t: done" << std::endl;
 }
 
-simif_emul_t::~simif_emul_t() {}
+simif_emul_t::~simif_emul_t() {
+  request_shutdown();
+  if (thread.joinable()) {
+    thread.join();
+  }
+}
 
 void simif_emul_t::start_driver(simulation_t &sim) {
   // Set up the simulation thread.
@@ -160,19 +169,23 @@ void simif_emul_t::start_driver(simulation_t &sim) {
 
     // Spawn the target thread.
     thread = std::thread([&] {
-      do_tick();
+      try {
+        do_tick();
+        if (!finished) {
+          // Load memories before initialising the simulation.
+          if (!load_mem_path.empty()) {
+            fprintf(stdout,
+                    "[fast loadmem] loadmem path exists, load simulation memories "
+                    "without loadmem_t widget, path = %s\n",
+                    load_mem_path.c_str());
+            load_mems(load_mem_path.c_str());
+          }
 
-      // Load memories before initialising the simulation.
-      if (!load_mem_path.empty()) {
-        fprintf(stdout,
-                "[fast loadmem] loadmem path exists, load simulation memories "
-                "without loadmem_t widget, path = %s\n",
-                load_mem_path.c_str());
-        load_mems(load_mem_path.c_str());
+          // Run the simulation flow.
+          exit_code = sim.execute_simulation_flow();
+        }
+      } catch (const simif_shutdown_exception_t &) {
       }
-
-      // Run the simulation flow.
-      exit_code = sim.execute_simulation_flow();
 
       // Wake the target thread before returning from the simulation thread.
       {
@@ -185,7 +198,7 @@ void simif_emul_t::start_driver(simulation_t &sim) {
     // Wait for the target thread to yield and enter the RTL simulator.
     // The target thread is waken up when the DPI tick function is
     // ready to transfer data to it.
-    rtlsim_cond.wait(lock, [&] { return rtlsim_flag; });
+    rtlsim_cond.wait(lock, [&] { return rtlsim_flag || finished; });
   }
 }
 
@@ -285,9 +298,31 @@ void simif_emul_t::load_mems(const char *fname) {
   }
 }
 
+void simif_emul_t::request_shutdown() {
+  if (!thread.joinable()) {
+    return;
+  }
+
+  finished = true;
+
+  {
+    std::lock_guard<std::mutex> lock(driver_mutex);
+    driver_flag = true;
+  }
+  driver_cond.notify_all();
+
+  {
+    std::lock_guard<std::mutex> lock(rtlsim_mutex);
+    rtlsim_flag = true;
+  }
+  rtlsim_cond.notify_all();
+}
+
 int simif_emul_t::end() {
   assert(finished && "simulation not yet finished");
-  thread.join();
+  if (thread.joinable()) {
+    thread.join();
+  }
   return exit_code;
 }
 
@@ -301,7 +336,10 @@ void simif_emul_t::do_tick() {
   }
   {
     std::unique_lock<std::mutex> lock(driver_mutex);
-    driver_cond.wait(lock, [&] { return driver_flag; });
+    driver_cond.wait(lock, [&] { return driver_flag || finished; });
+  }
+  if (finished) {
+    throw simif_shutdown_exception_t{};
   }
 }
 

@@ -168,6 +168,7 @@ protected:
 
   // Writes directly into the host DRAM models to initialize them.
   void load_mems(const char *fname);
+  void request_shutdown();
 
 private:
   class CPUManagedStreamIOImpl final : public CPUManagedStreamIO {
