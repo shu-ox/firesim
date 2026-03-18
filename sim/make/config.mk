@@ -26,6 +26,10 @@ DRIVER_H ?=
 TARGET_CXX_FLAGS ?=
 TARGET_LD_FLAGS ?=
 
+# When enabled, compile FireSim host-driver objects with -fPIC so generated
+# support objects can be reused in shared-library wrappers.
+FIRESIM_DRIVER_PIC ?= 0
+
 ################################################################################
 # File and directory setup
 ################################################################################
