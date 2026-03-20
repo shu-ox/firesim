@@ -128,10 +128,13 @@ class MultiQueue[T <: Data](
   val do_enq     = WireInit(io.enq.fire)
   val do_deq     = WireInit(io.deq.fire)
   val deqAddrReg = RegNext(io.deqAddr)
+  // With one entry per queue, the pointer still toggles to track empty/full state,
+  // but it must not participate in the RAM address.
+  val enqRamAddr = if (entries == 1) io.enqAddr else Cat(io.enqAddr, enqPtrs(io.enqAddr))
 
   when(do_enq) {
-    ram(Cat(io.enqAddr, enqPtrs(io.enqAddr))) := io.enq.bits
-    enqPtrs(io.enqAddr)                       := enqPtrs(io.enqAddr) + 1.U
+    ram(enqRamAddr)     := io.enq.bits
+    enqPtrs(io.enqAddr) := enqPtrs(io.enqAddr) + 1.U
   }
   when(do_deq) {
     deqPtrs(deqAddrReg) := deqPtrs(deqAddrReg) + 1.U
@@ -161,7 +164,7 @@ class MultiQueue[T <: Data](
   io.empty     := empty
   io.deq.valid := deqValid
   io.enq.ready := !full
-  io.deq.bits  := ram.read(Cat(io.deqAddr, deqPtr))
+  io.deq.bits  := ram.read(if (entries == 1) io.deqAddr else Cat(io.deqAddr, deqPtr))
 }
 
 case class Permissions(readable: Boolean, writeable: Boolean)

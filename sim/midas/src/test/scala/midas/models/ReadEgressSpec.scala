@@ -66,6 +66,31 @@ class MultiQueueDebugHarness extends Module {
   io.debugPrevDeqAddr := prevDeqAddr
 }
 
+class SingleEntryMultiQueueDebugHarness extends Module {
+  private val numQueues = 16
+  private val queueBits = log2Ceil(numQueues)
+
+  val io = IO(new Bundle {
+    val enq = Flipped(Decoupled(UInt(32.W)))
+    val enqAddr = Input(UInt(queueBits.W))
+    val deqAddr = Input(UInt(queueBits.W))
+    val deqReady = Input(Bool())
+
+    val deqValid = Output(Bool())
+    val deqData = Output(UInt(32.W))
+  })
+
+  val dut = Module(new MultiQueue(UInt(32.W), numQueues = numQueues, requestedEntries = 1))
+
+  dut.io.enq <> io.enq
+  dut.io.enqAddr := io.enqAddr
+  dut.io.deqAddr := io.deqAddr
+  dut.io.deq.ready := io.deqReady
+
+  io.deqValid := dut.io.deq.valid
+  io.deqData := dut.io.deq.bits
+}
+
 class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matchers {
   private implicit val p: Parameters = Parameters.empty.alterPartial {
     case NastiKey => NastiParameters(dataBits = 32, addrBits = 32, idBits = 7)
@@ -79,6 +104,10 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
   private val ReqB = 0x24
   private val DataA = BigInt("11111111", 16)
   private val DataB = BigInt("b200b200", 16)
+  private val AliasQueueA = 9
+  private val AliasQueueB = 1
+  private val AliasDataA = BigInt("a2a2a2a2", 16)
+  private val AliasDataB = BigInt("dddddddd", 16)
 
   private def setDefaults(c: ReadEgressDebugHarness): Unit = {
     c.io.enq.valid.poke(false.B)
@@ -152,6 +181,22 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
     c.io.enq.valid.poke(false.B)
   }
 
+  private def setSingleEntryMultiQueueDefaults(c: SingleEntryMultiQueueDebugHarness): Unit = {
+    c.io.enq.valid.poke(false.B)
+    c.io.enq.bits.poke(0.U)
+    c.io.enqAddr.poke(0.U)
+    c.io.deqAddr.poke(0.U)
+    c.io.deqReady.poke(false.B)
+  }
+
+  private def enqueueSingleEntryQueue(c: SingleEntryMultiQueueDebugHarness, addr: Int, data: BigInt): Unit = {
+    c.io.enq.valid.poke(true.B)
+    c.io.enq.bits.poke(data.U)
+    c.io.enqAddr.poke(addr.U)
+    c.clock.step()
+    c.io.enq.valid.poke(false.B)
+  }
+
   "MultiQueue" should "show dequeue-address skew if the reader switches queues mid-stream" in {
     test(new MultiQueueDebugHarness) { c =>
       setMultiQueueDefaults(c)
@@ -170,6 +215,24 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
       c.io.deqValid.expect(true.B)
       c.io.debugPrevDeqAddr.expect(0.U)
       c.io.deqAddr.peek().litValue should equal(1)
+    }
+  }
+
+  "MultiQueue" should "keep different queues isolated when configured for one entry per queue" in {
+    test(new SingleEntryMultiQueueDebugHarness) { c =>
+      setSingleEntryMultiQueueDefaults(c)
+      c.clock.step()
+
+      enqueueSingleEntryQueue(c, addr = AliasQueueA, data = AliasDataA)
+      enqueueSingleEntryQueue(c, addr = AliasQueueB, data = AliasDataB)
+
+      c.io.deqAddr.poke(AliasQueueA.U)
+      c.io.deqReady.poke(false.B)
+      c.clock.step()
+
+      c.io.deqReady.poke(true.B)
+      c.io.deqValid.expect(true.B)
+      c.io.deqData.expect(AliasDataA.U)
     }
   }
 }
