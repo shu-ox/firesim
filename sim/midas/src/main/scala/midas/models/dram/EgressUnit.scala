@@ -275,7 +275,12 @@ class ReadEgress(maxRequests: Int, maxReqLength: Int, maxReqsPerId: Int)
   multiQueue.io.enq.bits.last := io.enq.bits.last
   multiQueue.io.enq.valid := io.enq.valid
   multiQueue.io.enqAddr := enqPId.bits
-  multiQueue.io.deqAddr := deqPId
+  // Keep the dequeue queue pinned to the active transaction until its last
+  // beat retires. Switching to a new queue early violates MultiQueue's
+  // single-reader assumption and can pair the old request ID with the next
+  // queue's payload.
+  val activeDeqPId = Mux(currReqReg.valid && deqPIdReg.valid, deqPIdReg.bits, deqPId)
+  multiQueue.io.deqAddr := activeDeqPId
 
   xactionDone := targetFire && currReqReg.valid && deqPIdReg.valid &&
                  io.resp.tReady && io.resp.tBits.last
@@ -354,4 +359,3 @@ class WriteEgress(maxRequests: Int, maxReqLength: Int, maxReqsPerId: Int)
 trait EgressUnitParameters {
   val egressUnitDelay = 1
 }
-
