@@ -275,15 +275,17 @@ class ReadEgress(maxRequests: Int, maxReqLength: Int, maxReqsPerId: Int)
   multiQueue.io.enq.bits.last := io.enq.bits.last
   multiQueue.io.enq.valid := io.enq.valid
   multiQueue.io.enqAddr := enqPId.bits
-  // Keep the dequeue queue pinned to the active transaction until its last
-  // beat retires. Switching to a new queue early violates MultiQueue's
-  // single-reader assumption and can pair the old request ID with the next
-  // queue's payload.
-  val activeDeqPId = Mux(currReqReg.valid && deqPIdReg.valid, deqPIdReg.bits, deqPId)
+  // MultiQueue only supports switching readers after the active transaction is
+  // fully consumed. Preselect the next queue exactly on the retiring beat so
+  // the next payload is ready without switching early and mispairing ID/data.
+  val currentDeqPId = Mux(currReqReg.valid && deqPIdReg.valid, deqPIdReg.bits, deqPId)
+  val xactionRetiring = targetFire && currReqReg.valid && deqPIdReg.valid &&
+                        io.resp.tReady && multiQueue.io.deq.valid &&
+                        multiQueue.io.deq.bits.last
+  val activeDeqPId = Mux(xactionRetiring && io.req.t.valid, deqPId, currentDeqPId)
   multiQueue.io.deqAddr := activeDeqPId
 
-  xactionDone := targetFire && currReqReg.valid && deqPIdReg.valid &&
-                 io.resp.tReady && io.resp.tBits.last
+  xactionDone := xactionRetiring
 
   io.resp.tBits := NastiReadDataChannel(currReqReg.bits,
     multiQueue.io.deq.bits.data, multiQueue.io.deq.bits.last)

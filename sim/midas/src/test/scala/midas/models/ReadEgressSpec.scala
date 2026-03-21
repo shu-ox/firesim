@@ -104,6 +104,8 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
   private val ReqB = 0x24
   private val DataA = BigInt("11111111", 16)
   private val DataB = BigInt("b200b200", 16)
+  private val DataASecondBeat = BigInt("22222222", 16)
+  private val DataBSecondBeat = BigInt("c300c300", 16)
   private val AliasQueueA = 9
   private val AliasQueueB = 1
   private val AliasDataA = BigInt("a2a2a2a2", 16)
@@ -136,13 +138,31 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
     c.io.enq.valid.poke(false.B)
   }
 
+  private def enqueueResponseBeat(c: ReadEgressDebugHarness, id: Int, data: BigInt, last: Boolean): Unit = {
+    c.io.enq.ready.expect(true.B)
+    c.io.enq.valid.poke(true.B)
+    c.io.enq.bits.id.poke(id.U)
+    c.io.enq.bits.data.poke(data.U)
+    c.io.enq.bits.last.poke(last.B)
+    c.io.enq.bits.resp.poke(0.U)
+    c.io.enq.bits.user.poke(0.U)
+    c.clock.step()
+    c.io.enq.valid.poke(false.B)
+  }
+
   private def presentRequest(c: ReadEgressDebugHarness, id: Int): Unit = {
     c.io.req.hValid.poke(true.B)
     c.io.req.t.valid.poke(true.B)
     c.io.req.t.bits.poke(id.U)
   }
 
-  "ReadEgress" should "keep MultiQueue dequeue address pinned to the active request until retirement" in {
+  private def keepTokenWithoutNewRequest(c: ReadEgressDebugHarness): Unit = {
+    c.io.req.hValid.poke(true.B)
+    c.io.req.t.valid.poke(false.B)
+    c.io.req.t.bits.poke(0.U)
+  }
+
+  "ReadEgress" should "handoff translated single-beat responses correctly on the retiring beat" in {
     test(new ReadEgressDebugHarness(MaxRequests, MaxReqLength, MaxReqsPerId)) { c =>
       setDefaults(c)
       c.clock.step()
@@ -160,8 +180,57 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
       c.debug.debugDeqPIdRegValid.expect(true.B)
       c.io.resp.hValid.expect(true.B)
       c.io.resp.tBits.id.expect(ReqA.U)
+      c.io.resp.tBits.data.expect(DataA.U)
+      c.io.resp.tBits.last.expect(true.B)
+      c.clock.step()
 
-      c.debug.debugLiveDeqAddr.peek().litValue should equal(c.debug.debugRegDeqAddr.peek().litValue)
+      keepTokenWithoutNewRequest(c)
+      c.io.resp.hValid.expect(true.B)
+      c.io.resp.tBits.id.expect(ReqB.U)
+      c.io.resp.tBits.data.expect(DataB.U)
+      c.io.resp.tBits.last.expect(true.B)
+    }
+  }
+
+  "ReadEgress" should "handoff translated multi-beat responses correctly on the retiring beat" in {
+    test(new ReadEgressDebugHarness(MaxRequests, maxReqLength = 2, MaxReqsPerId)) { c =>
+      setDefaults(c)
+      c.clock.step()
+
+      enqueueResponseBeat(c, ReqA, DataA, last = false)
+      enqueueResponseBeat(c, ReqA, DataASecondBeat, last = true)
+      enqueueResponseBeat(c, ReqB, DataB, last = false)
+      enqueueResponseBeat(c, ReqB, DataBSecondBeat, last = true)
+
+      presentRequest(c, ReqA)
+      c.clock.step()
+
+      keepTokenWithoutNewRequest(c)
+      c.io.resp.hValid.expect(true.B)
+      c.io.resp.tBits.id.expect(ReqA.U)
+      c.io.resp.tBits.data.expect(DataA.U)
+      c.io.resp.tBits.last.expect(false.B)
+      c.clock.step()
+
+      presentRequest(c, ReqB)
+      c.io.resp.hValid.expect(true.B)
+      c.io.resp.tBits.id.expect(ReqA.U)
+      c.io.resp.tBits.data.expect(DataASecondBeat.U)
+      c.io.resp.tBits.last.expect(true.B)
+      c.clock.step()
+
+      keepTokenWithoutNewRequest(c)
+      c.io.resp.hValid.expect(true.B)
+      c.io.resp.tBits.id.expect(ReqB.U)
+      c.io.resp.tBits.data.expect(DataB.U)
+      c.io.resp.tBits.last.expect(false.B)
+      c.clock.step()
+
+      keepTokenWithoutNewRequest(c)
+      c.io.resp.hValid.expect(true.B)
+      c.io.resp.tBits.id.expect(ReqB.U)
+      c.io.resp.tBits.data.expect(DataBSecondBeat.U)
+      c.io.resp.tBits.last.expect(true.B)
     }
   }
 
