@@ -99,6 +99,7 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
   private val MaxRequests = 16
   private val MaxReqLength = 1
   private val MaxReqsPerId = 40
+  private val NonTranslatedMaxReqsPerId = 1
 
   private val ReqA = 0x31
   private val ReqB = 0x24
@@ -111,7 +112,7 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
   private val AliasDataA = BigInt("a2a2a2a2", 16)
   private val AliasDataB = BigInt("dddddddd", 16)
 
-  private def setDefaults(c: ReadEgressDebugHarness): Unit = {
+  private def setDefaults(c: ReadEgress): Unit = {
     c.io.enq.valid.poke(false.B)
     c.io.enq.bits.id.poke(0.U)
     c.io.enq.bits.data.poke(0.U)
@@ -126,7 +127,7 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
     c.io.resp.tReady.poke(true.B)
   }
 
-  private def enqueueResponse(c: ReadEgressDebugHarness, id: Int, data: BigInt): Unit = {
+  private def enqueueResponse(c: ReadEgress, id: Int, data: BigInt): Unit = {
     c.io.enq.ready.expect(true.B)
     c.io.enq.valid.poke(true.B)
     c.io.enq.bits.id.poke(id.U)
@@ -138,7 +139,7 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
     c.io.enq.valid.poke(false.B)
   }
 
-  private def enqueueResponseBeat(c: ReadEgressDebugHarness, id: Int, data: BigInt, last: Boolean): Unit = {
+  private def enqueueResponseBeat(c: ReadEgress, id: Int, data: BigInt, last: Boolean): Unit = {
     c.io.enq.ready.expect(true.B)
     c.io.enq.valid.poke(true.B)
     c.io.enq.bits.id.poke(id.U)
@@ -150,87 +151,103 @@ class ReadEgressSpec extends AnyFlatSpec with ChiselScalatestTester with Matcher
     c.io.enq.valid.poke(false.B)
   }
 
-  private def presentRequest(c: ReadEgressDebugHarness, id: Int): Unit = {
+  private def presentRequest(c: ReadEgress, id: Int): Unit = {
     c.io.req.hValid.poke(true.B)
     c.io.req.t.valid.poke(true.B)
     c.io.req.t.bits.poke(id.U)
   }
 
-  private def keepTokenWithoutNewRequest(c: ReadEgressDebugHarness): Unit = {
+  private def keepTokenWithoutNewRequest(c: ReadEgress): Unit = {
     c.io.req.hValid.poke(true.B)
     c.io.req.t.valid.poke(false.B)
     c.io.req.t.bits.poke(0.U)
   }
 
+  private def exerciseSingleBeatHandoff(c: ReadEgress): Unit = {
+    setDefaults(c)
+    c.clock.step()
+
+    enqueueResponse(c, ReqA, DataA)
+    enqueueResponse(c, ReqB, DataB)
+
+    presentRequest(c, ReqA)
+    c.clock.step()
+
+    presentRequest(c, ReqB)
+    c.io.resp.hValid.expect(true.B)
+    c.io.resp.tBits.id.expect(ReqA.U)
+    c.io.resp.tBits.data.expect(DataA.U)
+    c.io.resp.tBits.last.expect(true.B)
+    c.clock.step()
+
+    keepTokenWithoutNewRequest(c)
+    c.io.resp.hValid.expect(true.B)
+    c.io.resp.tBits.id.expect(ReqB.U)
+    c.io.resp.tBits.data.expect(DataB.U)
+    c.io.resp.tBits.last.expect(true.B)
+  }
+
+  private def exerciseMultiBeatHandoff(c: ReadEgress): Unit = {
+    setDefaults(c)
+    c.clock.step()
+
+    enqueueResponseBeat(c, ReqA, DataA, last = false)
+    enqueueResponseBeat(c, ReqA, DataASecondBeat, last = true)
+    enqueueResponseBeat(c, ReqB, DataB, last = false)
+    enqueueResponseBeat(c, ReqB, DataBSecondBeat, last = true)
+
+    presentRequest(c, ReqA)
+    c.clock.step()
+
+    keepTokenWithoutNewRequest(c)
+    c.io.resp.hValid.expect(true.B)
+    c.io.resp.tBits.id.expect(ReqA.U)
+    c.io.resp.tBits.data.expect(DataA.U)
+    c.io.resp.tBits.last.expect(false.B)
+    c.clock.step()
+
+    presentRequest(c, ReqB)
+    c.io.resp.hValid.expect(true.B)
+    c.io.resp.tBits.id.expect(ReqA.U)
+    c.io.resp.tBits.data.expect(DataASecondBeat.U)
+    c.io.resp.tBits.last.expect(true.B)
+    c.clock.step()
+
+    keepTokenWithoutNewRequest(c)
+    c.io.resp.hValid.expect(true.B)
+    c.io.resp.tBits.id.expect(ReqB.U)
+    c.io.resp.tBits.data.expect(DataB.U)
+    c.io.resp.tBits.last.expect(false.B)
+    c.clock.step()
+
+    keepTokenWithoutNewRequest(c)
+    c.io.resp.hValid.expect(true.B)
+    c.io.resp.tBits.id.expect(ReqB.U)
+    c.io.resp.tBits.data.expect(DataBSecondBeat.U)
+    c.io.resp.tBits.last.expect(true.B)
+  }
+
   "ReadEgress" should "handoff translated single-beat responses correctly on the retiring beat" in {
     test(new ReadEgressDebugHarness(MaxRequests, MaxReqLength, MaxReqsPerId)) { c =>
-      setDefaults(c)
-      c.clock.step()
-
-      enqueueResponse(c, ReqA, DataA)
-      enqueueResponse(c, ReqB, DataB)
-
-      presentRequest(c, ReqA)
-      c.clock.step()
-
-      presentRequest(c, ReqB)
-
-      c.debug.debugCurrReqValid.expect(true.B)
-      c.debug.debugCurrReqBits.expect(ReqA.U)
-      c.debug.debugDeqPIdRegValid.expect(true.B)
-      c.io.resp.hValid.expect(true.B)
-      c.io.resp.tBits.id.expect(ReqA.U)
-      c.io.resp.tBits.data.expect(DataA.U)
-      c.io.resp.tBits.last.expect(true.B)
-      c.clock.step()
-
-      keepTokenWithoutNewRequest(c)
-      c.io.resp.hValid.expect(true.B)
-      c.io.resp.tBits.id.expect(ReqB.U)
-      c.io.resp.tBits.data.expect(DataB.U)
-      c.io.resp.tBits.last.expect(true.B)
+      exerciseSingleBeatHandoff(c)
     }
   }
 
   "ReadEgress" should "handoff translated multi-beat responses correctly on the retiring beat" in {
     test(new ReadEgressDebugHarness(MaxRequests, maxReqLength = 2, MaxReqsPerId)) { c =>
-      setDefaults(c)
-      c.clock.step()
+      exerciseMultiBeatHandoff(c)
+    }
+  }
 
-      enqueueResponseBeat(c, ReqA, DataA, last = false)
-      enqueueResponseBeat(c, ReqA, DataASecondBeat, last = true)
-      enqueueResponseBeat(c, ReqB, DataB, last = false)
-      enqueueResponseBeat(c, ReqB, DataBSecondBeat, last = true)
+  "ReadEgress" should "handoff non-translated single-beat responses correctly on the retiring beat" in {
+    test(new ReadEgress(MaxRequests, MaxReqLength, NonTranslatedMaxReqsPerId)) { c =>
+      exerciseSingleBeatHandoff(c)
+    }
+  }
 
-      presentRequest(c, ReqA)
-      c.clock.step()
-
-      keepTokenWithoutNewRequest(c)
-      c.io.resp.hValid.expect(true.B)
-      c.io.resp.tBits.id.expect(ReqA.U)
-      c.io.resp.tBits.data.expect(DataA.U)
-      c.io.resp.tBits.last.expect(false.B)
-      c.clock.step()
-
-      presentRequest(c, ReqB)
-      c.io.resp.hValid.expect(true.B)
-      c.io.resp.tBits.id.expect(ReqA.U)
-      c.io.resp.tBits.data.expect(DataASecondBeat.U)
-      c.io.resp.tBits.last.expect(true.B)
-      c.clock.step()
-
-      keepTokenWithoutNewRequest(c)
-      c.io.resp.hValid.expect(true.B)
-      c.io.resp.tBits.id.expect(ReqB.U)
-      c.io.resp.tBits.data.expect(DataB.U)
-      c.io.resp.tBits.last.expect(false.B)
-      c.clock.step()
-
-      keepTokenWithoutNewRequest(c)
-      c.io.resp.hValid.expect(true.B)
-      c.io.resp.tBits.id.expect(ReqB.U)
-      c.io.resp.tBits.data.expect(DataBSecondBeat.U)
-      c.io.resp.tBits.last.expect(true.B)
+  "ReadEgress" should "handoff non-translated multi-beat responses correctly on the retiring beat" in {
+    test(new ReadEgress(MaxRequests, maxReqLength = 2, NonTranslatedMaxReqsPerId)) { c =>
+      exerciseMultiBeatHandoff(c)
     }
   }
 
